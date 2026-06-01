@@ -51,6 +51,34 @@ jobs:
           ONLY_ACTIVE_ARCH=NO \
           build 2>&1 | tee build.log
 
+    - name: strip unsupported entitlements
+      run: |
+        APP_PATH=$(find ./DerivedData -name "Blink.app" -type d | head -1)
+        echo "Stripping unsupported entitlements for: $APP_PATH"
+        # Find all executables in the app bundle
+        find "$APP_PATH" -type f -perm +111 | while read EXEC; do
+          # Check if it's a Mach-O binary with entitlements
+          codesign -d --entitlements /tmp/ents.plist "$EXEC" 2>/dev/null || continue
+          echo "Processing: $EXEC"
+          # Keep only entitlements that xtool can provision.
+          # xtool supports: application-identifier, team-identifier, keychain-access-groups,
+          # get-task-allow, aps-environment, application-groups.
+          # Everything else (iCloud, sandbox, associated domains, etc.) causes
+          # provisioning profile mismatches that lead to launch crashes.
+          /usr/libexec/PlistBuddy -x -c "Print" /tmp/ents.plist > /tmp/full.plist
+          python3 -c "
+import plistlib
+keep = {'application-identifier','com.apple.developer.team-identifier','keychain-access-groups','get-task-allow','aps-environment','com.apple.security.application-groups'}
+with open('/tmp/full.plist','rb') as f: d = plistlib.load(f)
+filtered = {k:v for k,v in d.items() if k in keep}
+with open('/tmp/ents.plist','wb') as f: plistlib.dump(filtered, f)
+print(f'Kept {len(filtered)}/{len(d)} entitlements: {list(filtered.keys())}')
+"
+          codesign -f -s - --entitlements /tmp/ents.plist "$EXEC"
+        done
+        rm -f /tmp/ents.plist /tmp/full.plist
+        echo "Entitlement stripping complete"
+
     - name: generate unsigned ipa
       run: |
         APP_PATH=$(find ./DerivedData -name "Blink.app" -type d | head -1)
