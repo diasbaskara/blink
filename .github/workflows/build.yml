@@ -1,21 +1,17 @@
-name: CI
+name: Build IPA
 
-on: [push]
+on:
+  push:
+  workflow_dispatch:
 
 jobs:
   build:
-
-    runs-on: macOS-latest
-    #runs-on: macos-13
+    runs-on: macos-13
 
     steps:
-    # - uses: swift-actions/setup-swift@v1
     - uses: actions/checkout@v2
       with:
         submodules: true
-
-    - name: switch xcode
-      run: sudo xcode-select -s '/Applications/Xcode_15.0.app/Contents/Developer'
 
     - name: use cache
       id: cache
@@ -37,20 +33,31 @@ jobs:
     - name: copy xcconfig
       run: cp template_setup.xcconfig developer_setup.xcconfig
 
-    - name: BlinkTests
-      run: xcodebuild -project Blink.xcodeproj -scheme BlinkTests -sdk iphonesimulator -destination 'platform=iOS Simulator,name=iPad Air (5th generation)' test | xcpretty
+    - name: build unsigned app
+      run: |
+        set -o pipefail
+        xcodebuild \
+          -project Blink.xcodeproj \
+          -scheme Blink \
+          -sdk iphoneos \
+          -configuration Debug \
+          -derivedDataPath ./DerivedData \
+          CODE_SIGN_IDENTITY='' \
+          CODE_SIGNING_REQUIRED=NO \
+          CODE_SIGNING_ALLOWED=NO \
+          ONLY_ACTIVE_ARCH=NO \
+          build 2>&1 | tee build.log
 
-    # - name: actual build
-    #   run: set -o pipefail && xcodebuild archive -project Blink.xcodeproj -scheme Blink -sdk iphoneos -configuration Debug clean build IPHONEOS_DEPLOYMENT_TARGET='16.1' CODE_SIGN_IDENTITY='' CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO ONLY_ACTIVE_ARCH=NO | tee build.log | xcpretty
+    - name: generate unsigned ipa
+      run: |
+        APP_PATH=$(find ./DerivedData -name "Blink.app" -type d | head -1)
+        echo "Found app at: $APP_PATH"
+        mkdir Payload
+        cp -r "$APP_PATH" Payload/
+        zip -r Blink.ipa Payload
 
-    # - name: generate unsigned debug ipa
-    #   run: |
-    #     cd ~
-    #     mkdir Payload
-    #     mv ~/Library/Developer/Xcode/Archives/*/*/Products/Applications/Blink.app ~/Payload/
-    #     zip -r Blink.ipa Payload
-    # - name: upload ipa
-    #   uses: actions/upload-artifact@v2.2.0
-    #   with:
-    #     name: 'BlinkShell'
-    #     path: ~/Blink.ipa
+    - name: upload ipa
+      uses: actions/upload-artifact@v4
+      with:
+        name: Blink.ipa
+        path: Blink.ipa
