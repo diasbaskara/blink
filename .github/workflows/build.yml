@@ -65,14 +65,13 @@ jobs:
           # Everything else (iCloud, sandbox, associated domains, etc.) causes
           # provisioning profile mismatches that lead to launch crashes.
           /usr/libexec/PlistBuddy -x -c "Print" /tmp/ents.plist > /tmp/full.plist
-          python3 -c "
-import plistlib
-keep = {'application-identifier','com.apple.developer.team-identifier','keychain-access-groups','get-task-allow','aps-environment','com.apple.security.application-groups'}
-with open('/tmp/full.plist','rb') as f: d = plistlib.load(f)
-filtered = {k:v for k,v in d.items() if k in keep}
-with open('/tmp/ents.plist','wb') as f: plistlib.dump(filtered, f)
-print(f'Kept {len(filtered)}/{len(d)} entitlements: {list(filtered.keys())}')
-"
+          # Keep only supported keys by deleting everything, then re-add what we want
+          for key in $(/usr/libexec/PlistBuddy -c "Print" /tmp/full.plist 2>/dev/null | grep '^    ' | sed 's/ =.*//' | tr -d ' '); do
+            case "$key" in
+              application-identifier|com.apple.developer.team-identifier|keychain-access-groups|get-task-allow|aps-environment|com.apple.security.application-groups) ;;
+              *) /usr/libexec/PlistBuddy -c "Delete :$key" /tmp/ents.plist 2>/dev/null || true ;;
+            esac
+          done
           codesign -f -s - --entitlements /tmp/ents.plist "$EXEC"
         done
         rm -f /tmp/ents.plist /tmp/full.plist
