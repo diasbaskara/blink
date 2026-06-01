@@ -35,6 +35,32 @@ jobs:
     - name: copy xcconfig
       run: cp template_setup.xcconfig developer_setup.xcconfig
 
+    - name: strip unsupported entitlements
+      run: |
+        # xtool only provisions: application-identifier, team-identifier, keychain-access-groups,
+        # get-task-allow, aps-environment, application-groups.
+        # Strip everything else to prevent provisioning profile mismatches.
+        ENT_FILE=Blink/Blink.entitlements
+        cp "$ENT_FILE" "$ENT_FILE.bak"
+        for key in \
+          com.apple.developer.associated-domains \
+          com.apple.developer.default-data-protection \
+          com.apple.developer.icloud-container-identifiers \
+          com.apple.developer.icloud-services \
+          com.apple.developer.ubiquity-container-identifiers \
+          com.apple.developer.ubiquity-kvstore-identifier \
+          com.apple.developer.user-fonts \
+          com.apple.developer.web-browser \
+          com.apple.security.app-sandbox \
+          com.apple.security.device.bluetooth \
+          com.apple.security.device.camera \
+          com.apple.security.files.user-selected.read-write \
+          com.apple.security.network.client \
+          com.apple.security.network.server \
+          com.apple.security.personal-information.location; do
+          /usr/libexec/PlistBuddy -c "Delete :$key" "$ENT_FILE" 2>/dev/null || true
+        done
+        echo "Stripped entitlements:" && /usr/libexec/PlistBuddy -c "Print" "$ENT_FILE"
     - name: build unsigned app
       run: |
         set -o pipefail
@@ -49,33 +75,6 @@ jobs:
           CODE_SIGNING_ALLOWED=NO \
           ONLY_ACTIVE_ARCH=NO \
           build 2>&1 | tee build.log
-
-    - name: strip unsupported entitlements
-      run: |
-        APP_PATH=$(find ./DerivedData -name "Blink.app" -type d | head -1)
-        echo "Stripping unsupported entitlements for: $APP_PATH"
-        # Find all executables in the app bundle
-        find "$APP_PATH" -type f -perm +111 | while read EXEC; do
-          # Check if it's a Mach-O binary with entitlements
-          codesign -d --entitlements /tmp/ents.plist "$EXEC" 2>/dev/null || continue
-          echo "Processing: $EXEC"
-          # Keep only entitlements that xtool can provision.
-          # xtool supports: application-identifier, team-identifier, keychain-access-groups,
-          # get-task-allow, aps-environment, application-groups.
-          # Everything else (iCloud, sandbox, associated domains, etc.) causes
-          # provisioning profile mismatches that lead to launch crashes.
-          /usr/libexec/PlistBuddy -x -c "Print" /tmp/ents.plist > /tmp/full.plist
-          # Keep only supported keys by deleting everything, then re-add what we want
-          for key in $(/usr/libexec/PlistBuddy -c "Print" /tmp/full.plist 2>/dev/null | grep '^    ' | sed 's/ =.*//' | tr -d ' '); do
-            case "$key" in
-              application-identifier|com.apple.developer.team-identifier|keychain-access-groups|get-task-allow|aps-environment|com.apple.security.application-groups) ;;
-              *) /usr/libexec/PlistBuddy -c "Delete :$key" /tmp/ents.plist 2>/dev/null || true ;;
-            esac
-          done
-          codesign -f -s - --entitlements /tmp/ents.plist "$EXEC"
-        done
-        rm -f /tmp/ents.plist /tmp/full.plist
-        echo "Entitlement stripping complete"
 
     - name: generate unsigned ipa
       run: |
