@@ -82,6 +82,15 @@ jobs:
       run: |
         APP_PATH=$(find ./DerivedData -name "Blink.app" -type d | head -1)
         echo "Found app at: $APP_PATH"
+        # Remove app extensions - xtool signer doesn't properly handle per-extension entitlements
+        # which causes provisioning mismatch crashes. Core Blink (SSH terminal) works without them.
+        if [ -d "$APP_PATH/PlugIns" ]; then
+          echo "Removing app extensions: $(ls "$APP_PATH/PlugIns")"
+          rm -rf "$APP_PATH/PlugIns"
+        fi
+        # Also remove any debug/preview dylibs that may cause issues
+        find "$APP_PATH" -name "*.debug.dylib" -delete 2>/dev/null || true
+        find "$APP_PATH" -name "__preview.dylib" -delete 2>/dev/null || true
         mkdir Payload
         cp -r "$APP_PATH" Payload/
         zip -r Blink.ipa Payload
