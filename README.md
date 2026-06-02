@@ -72,7 +72,7 @@ Bugs should be reported here on GitHub. If you have any questions or want to mak
 We can't wait to receive your valuable feedback. Enjoy!
 
 ## Build
-![CI](https://github.com/blinksh/blink/workflows/CI/badge.svg)
+![Build IPA](https://github.com/diasbaskara/blink/actions/workflows/build.yml/badge.svg)
 
 We made a ton easier to build and install Blink yourself on your iOS devices through XCode. We provide a precompiled package with all the libraries for the master branch. Here are the steps:
 
