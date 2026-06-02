@@ -95,8 +95,20 @@ jobs:
         cp -r "$APP_PATH" Payload/
         zip -r Blink.ipa Payload
 
-    - name: upload ipa
-      uses: actions/upload-artifact@v4
+    - name: extract version
+      id: version
+      run: |
+        APP_PATH=$(find ./DerivedData -name "Blink.app" -type d | head -1)
+        VER=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$APP_PATH/Info.plist")
+        BUILD=$(/usr/libexec/PlistBuddy -c "Print CFBundleVersion" "$APP_PATH/Info.plist")
+        echo "tag=v${VER}-${BUILD}" >> $GITHUB_OUTPUT
+
+    - name: publish release
+      uses: softprops/action-gh-release@v2
       with:
-        name: Blink.ipa
-        path: Blink.ipa
+        name: Blink ${{ steps.version.outputs.tag }}
+        tag_name: ${{ steps.version.outputs.tag }}
+        files: Blink.ipa
+        prerelease: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
