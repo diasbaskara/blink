@@ -35,6 +35,17 @@ import Foundation
 
 @objc class Migrator : NSObject {
   @objc static func perform() {
+    // Skip migration on fresh installs (e.g., via xtool/sideloading).
+    // The app group container may not exist under the new bundle ID.
+    guard let groupPath = BlinkPaths.groupContainerPath() else {
+      print("No app group container – skipping migration")
+      return
+    }
+    let migratorFileURL = URL(fileURLWithPath: groupPath).appendingPathComponent(".migrator")
+    if (try? String(contentsOf: migratorFileURL, encoding: .utf8)) == nil {
+      // No previous migration marker — fresh install, nothing to migrate
+      return
+    }
     Self.perform(steps: [MigrationToAppGroup(),
                          MigrationAddSnippetsShortcut(),
                          MigrationFileProviderReplicatedExtension(),
@@ -43,11 +54,12 @@ import Foundation
   }
 
   static func perform(steps: [MigrationStep]) {
-    let migratorFileURL = URL(fileURLWithPath: BlinkPaths.groupContainerPath()).appendingPathComponent(".migrator")
+    guard let groupPath = BlinkPaths.groupContainerPath() else { return }
+    let migratorFileURL = URL(fileURLWithPath: groupPath).appendingPathComponent(".migrator")
 
     let currentVersionString = try? String(contentsOf: migratorFileURL, encoding: .utf8)
-    var currentVersion = Int(currentVersionString ?? "0") ?? 0
 
+    var currentVersion = Int(currentVersionString ?? "0") ?? 0
     steps.forEach { step in
       guard step.version > currentVersion else {
         return
